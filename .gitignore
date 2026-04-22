@@ -1,0 +1,35 @@
+## Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+## Virtualenvs
+.venv/
+venv/
+mcp/
+
+## Runtime outputs (project-generated)
+logs/
+reports/
+payloads/
+
+## Loot / downloaded artifacts (do not commit)
+*_loot/
+sysvol_loot/
+logging_loot/
+
+## Local scan outputs
+*nmap*.txt
+*.pcap
+*.cap
+
+## OS / Editor
+.DS_Store
+.idea/
+.vscode/
+
+## Archives / large local files
+*.zip
+
