@@ -82,7 +82,7 @@ graph TD
 
 ```bash
 # 1. Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/ans-inayat/offensive-sec-mcp
 cd mcp
 
 # 2. Create and activate a virtual environment
@@ -478,7 +478,7 @@ Contributions are welcome, especially in these areas:
 ### Development Setup
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/ans-inayat/offensive-sec-mcp
 cd mcp
 python3 -m venv mcp
 source mcp/bin/activate
