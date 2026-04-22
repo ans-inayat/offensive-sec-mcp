@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Offensive Security MCP Agent</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Syne:wght@400;600;700;800&display=swap');
+
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080b0f;--s1:#0d1117;--s2:#131920;--s3:#1a2332;
+  --border:#1e2d3d;--border2:#253545;
+  --accent:#00ff88;--accent2:#00cfff;--accent3:#ff4d6d;--accent4:#ffb800;--accent5:#a78bfa;
+  --text:#c9d1d9;--muted:#6e7681;--dim:#3d4a5a;
+  --font-mono:'JetBrains Mono',monospace;--font-sans:'Syne',sans-serif;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font-mono);font-size:13px}
+
+/* ── LAYOUT ─────────────────────────────────────────────────────────── */
+.app{display:grid;grid-template-rows:38px 1fr;grid-template-columns:200px 1fr 280px;height:100vh;gap:0}
+.titlebar{grid-column:1/-1;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:12px;z-index:10}
+.sidebar{grid-row:2;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.main{grid-row:2;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.right-panel{grid-row:2;background:var(--s1);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+
+/* ── TITLEBAR ─────────────────────────────────────────────────────────── */
+.dots{display:flex;gap:5px;align-items:center}
+.dot{width:11px;height:11px;border-radius:50%}
+.dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+.title{font-family:var(--font-sans);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2.5px;margin-left:10px}
+.engagement-tag{font-size:10px;color:var(--muted);margin-left:8px;border:1px solid var(--border);padding:2px 8px;border-radius:3px}
+.status{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)}
+.status-led{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ── SIDEBAR ─────────────────────────────────────────────────────────── */
+.sb-section{padding:10px 0;border-bottom:1px solid var(--border)}
+.sb-label{font-size:9px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;padding:0 12px 5px}
+.sb-item{display:flex;align-items:center;gap:8px;padding:6px 12px;color:var(--muted);cursor:pointer;font-size:11px;border-left:2px solid transparent;transition:all .12s;white-space:nowrap}
+.sb-item:hover{background:var(--s2);color:var(--text);border-left-color:var(--border2)}
+.sb-item.active{color:var(--accent);border-left-color:var(--accent);background:rgba(0,255,136,.04)}
+.sb-badge{margin-left:auto;font-size:9px;background:rgba(0,255,136,.1);color:var(--accent);padding:1px 6px;border-radius:8px}
+.sb-badge.red{background:rgba(255,77,109,.1);color:var(--accent3)}
+.sb-icon{font-size:12px;min-width:14px;text-align:center}
+.scope-display{padding:8px 12px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}
+.scope-target{color:var(--accent2);font-size:10px}
+
+/* ── TABS ─────────────────────────────────────────────────────────── */
+.tab-bar{display:flex;gap:2px;padding:8px 12px;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0}
+.tab{padding:4px 12px;font-size:11px;font-family:var(--font-mono);cursor:pointer;border:1px solid transparent;border-radius:5px;color:var(--muted);transition:all .12s}
+.tab.active{background:rgba(0,255,136,.07);color:var(--accent);border-color:rgba(0,255,136,.2)}
+.tab:hover:not(.active){background:var(--s2);color:var(--text)}
+
+/* ── VIEWS ─────────────────────────────────────────────────────────── */
+.view{flex:1;overflow-y:auto;padding:14px;display:none}
+.view.active{display:block}
+
+/* ── SEARCH ─────────────────────────────────────────────────────────── */
+.search-row{display:flex;gap:8px;margin-bottom:12px}
+.search-box{flex:1;display:flex;align-items:center;gap:8px;background:var(--s2);border:1px solid var(--border);border-radius:5px;padding:5px 10px}
+.search-box input{flex:1;background:transparent;border:none;color:var(--text);font-family:var(--font-mono);font-size:11px;outline:none}
+.search-box input::placeholder{color:var(--dim)}
+.filter-sel{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:5px 8px;border-radius:5px;cursor:pointer;outline:none}
+
+/* ── STATS ─────────────────────────────────────────────────────────── */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat{background:var(--s1);border:1px solid var(--border);border-radius:6px;padding:10px 12px}
+.stat-n{font-family:var(--font-sans);font-size:20px;font-weight:700}
+.stat-l{font-size:9px;color:var(--muted);margin-top:2px}
+
+/* ── TOOL GRID ─────────────────────────────────────────────────────── */
+.cat-header{font-size:9px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;margin:14px 0 7px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.tool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.tool-card{background:var(--s1);border:1px solid var(--border);border-radius:7px;padding:12px;cursor:pointer;transition:all .12s;position:relative;overflow:hidden;border-left:3px solid var(--clr,var(--border))}
+.tool-card:hover{border-color:var(--accent2);background:var(--s2)}
+.tc-top{display:flex;align-items:flex-start;gap:8px}
+.tc-icon{font-size:15px;min-width:18px;margin-top:1px}
+.tc-name{font-family:var(--font-sans);font-size:12px;font-weight:700;color:var(--text)}
+.tc-cat{font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:1px}
+.tc-desc{font-size:10px;color:var(--muted);margin-top:7px;line-height:1.55}
+.tc-foot{display:flex;align-items:center;gap:6px;margin-top:9px}
+.plat{font-size:9px;padding:2px 6px;border-radius:3px;font-weight:600}
+.p-kali{background:rgba(0,255,136,.1);color:var(--accent)}
+.p-win{background:rgba(0,207,255,.1);color:var(--accent2)}
+.p-both{background:rgba(255,184,0,.1);color:var(--accent4)}
+.risk{font-size:9px;padding:2px 6px;border-radius:3px}
+.r-low{background:rgba(0,255,136,.07);color:#4ade80}
+.r-medium{background:rgba(255,184,0,.07);color:var(--accent4)}
+.r-high{background:rgba(255,77,109,.07);color:#f87171}
+.r-critical{background:rgba(255,77,109,.12);color:var(--accent3)}
+.exec-btn{margin-left:auto;font-size:9px;font-family:var(--font-mono);background:transparent;border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:3px;cursor:pointer;transition:all .12s}
+.exec-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── TERMINAL ─────────────────────────────────────────────────────── */
+.terminal-pane{display:flex;flex-direction:column;border-top:1px solid var(--border);height:220px;flex-shrink:0;background:#050810}
+.term-head{display:flex;align-items:center;gap:8px;padding:5px 12px;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0}
+.term-title-text{font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+.term-actions{margin-left:auto;display:flex;gap:6px}
+.term-btn{font-size:9px;font-family:var(--font-mono);background:transparent;border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:3px;cursor:pointer}
+.term-btn:hover{color:var(--accent3);border-color:var(--accent3)}
+.term-out{flex:1;overflow-y:auto;padding:8px 12px;font-size:11px;line-height:1.75}
+.t-prompt{color:var(--accent)}
+.t-cmd{color:var(--accent2)}
+.t-stdout{color:var(--text)}
+.t-stderr{color:#f87171}
+.t-info{color:var(--muted)}
+.t-success{color:var(--accent)}
+.t-warn{color:var(--accent4)}
+.t-scope{color:var(--accent3);font-weight:600}
+.t-pid{font-size:9px;color:var(--dim)}
+.term-input-row{display:flex;align-items:center;gap:8px;padding:5px 12px;border-top:1px solid var(--border);background:#050810;flex-shrink:0}
+.term-prompt-tag{color:var(--accent);font-size:11px;white-space:nowrap}
+.term-inp{flex:1;background:transparent;border:none;color:var(--accent2);font-family:var(--font-mono);font-size:11px;outline:none;caret-color:var(--accent)}
+.term-inp::placeholder{color:var(--dim)}
+
+/* ── RIGHT PANEL — AI ─────────────────────────────────────────────── */
+.rp-tabs{display:flex;gap:2px;padding:6px 10px;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0}
+.rp-tab{flex:1;padding:4px 0;font-size:10px;font-family:var(--font-mono);cursor:pointer;border:1px solid transparent;border-radius:4px;color:var(--muted);text-align:center;transition:all .12s}
+.rp-tab.active{background:rgba(0,255,136,.07);color:var(--accent);border-color:rgba(0,255,136,.15)}
+.rp-tab:hover:not(.active){background:var(--s2);color:var(--text)}
+.rp-view{flex:1;display:none;flex-direction:column;overflow:hidden}
+.rp-view.active{display:flex}
+
+/* AI Chat */
+.ai-msgs{flex:1;overflow-y:auto;padding:10px}
+.ai-bubble{padding:8px 10px;border-radius:6px;font-size:11px;line-height:1.6;margin-bottom:8px}
+.ai-bubble.user{background:rgba(0,255,136,.05);border:1px solid rgba(0,255,136,.15);color:var(--accent)}
+.ai-bubble.ai{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+.ai-bubble.thinking{color:var(--dim);font-style:italic;animation:fade 1s infinite}
+@keyframes fade{0%,100%{opacity:1}50%{opacity:.4}}
+.ai-tag{font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px;text-transform:uppercase}
+.ai-inp-row{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--border);background:var(--s1);flex-shrink:0}
+.ai-inp{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:10px;padding:6px 9px;border-radius:4px;outline:none;resize:none;min-height:32px;max-height:80px}
+.ai-inp:focus{border-color:var(--accent2)}
+.ai-send{background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.25);color:var(--accent);font-family:var(--font-mono);font-size:10px;padding:6px 12px;border-radius:4px;cursor:pointer;white-space:nowrap;align-self:flex-end}
+.ai-send:hover{background:rgba(0,255,136,.15)}
+.ai-send:disabled{opacity:.4;cursor:not-allowed}
+
+/* Payload gen */
+.form-section{padding:10px;overflow-y:auto;flex:1}
+.form-group{margin-bottom:10px}
+.form-label{font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;display:block}
+.form-inp{width:100%;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:5px 8px;border-radius:4px;outline:none}
+.form-inp:focus{border-color:var(--accent2)}
+.form-sel{width:100%;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:5px 8px;border-radius:4px;outline:none;cursor:pointer}
+.btn-primary{width:100%;background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.3);color:var(--accent);font-family:var(--font-mono);font-size:11px;padding:7px 0;border-radius:4px;cursor:pointer;margin-top:4px;transition:all .12s}
+.btn-primary:hover{background:rgba(0,255,136,.18)}
+.btn-danger{background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.25);color:var(--accent3)}
+.btn-danger:hover{background:rgba(255,77,109,.18)}
+.result-box{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:10px;color:var(--muted);margin-top:8px;max-height:120px;overflow-y:auto;line-height:1.6}
+
+/* Scope config */
+.scope-section{padding:10px;overflow-y:auto;flex:1}
+.scope-input{width:100%;background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:5px 8px;border-radius:4px;outline:none;min-height:80px;resize:vertical}
+
+/* Sessions */
+.session-item{background:var(--s2);border:1px solid var(--border);border-radius:5px;padding:7px 10px;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.session-pid{font-size:10px;color:var(--accent2)}
+.kill-btn{margin-left:auto;font-size:9px;background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.25);color:var(--accent3);padding:2px 7px;border-radius:3px;cursor:pointer}
+
+/* Audit table */
+.audit-table{width:100%;border-collapse:collapse;font-size:10px}
+.audit-table th{text-align:left;color:var(--muted);font-weight:500;padding:4px 6px;border-bottom:1px solid var(--border);font-size:9px;letter-spacing:1px;text-transform:uppercase}
+.audit-table td{padding:4px 6px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top}
+.audit-table tr:hover td{background:var(--s2)}
+
+/* MCP config */
+.config-code{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:10px;font-size:10px;color:var(--accent2);line-height:1.7;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- TITLEBAR -->
+  <div class="titlebar">
+    <div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+    <span class="title">OFFENSIVE-MCP-AGENT</span>
+    <span class="engagement-tag" id="engagement-tag">engagement: default</span>
+    <div class="status">
+      <div class="status-led" id="ws-led" style="background:var(--accent3)"></div>
+      <span id="ws-status">connecting...</span>
+      &nbsp;|&nbsp;
+      <span id="active-pids">0 sessions</span>
+      &nbsp;|&nbsp;
+      <span style="color:var(--muted)">Ans Inayat</span>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sb-section">
+      <div class="sb-label">Views</div>
+      <div class="sb-item active" onclick="switchView('arsenal',this)" id="nav-arsenal"><span class="sb-icon">⚔</span>Arsenal <span class="sb-badge" id="tool-count-badge">0</span></div>
+      <div class="sb-item" onclick="switchView('execute',this)" id="nav-execute"><span class="sb-icon">▶</span>Execute Tool</div>
+      <div class="sb-item" onclick="switchView('audit',this)" id="nav-audit"><span class="sb-icon">◉</span>Audit Log</div>
+      <div class="sb-item" onclick="switchView('reports',this)" id="nav-reports"><span class="sb-icon">◈</span>Reports</div>
+      <div class="sb-item" onclick="switchView('mcp-config',this)" id="nav-mcp-config"><span class="sb-icon">⚙</span>MCP Config</div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Categories</div>
+      <div class="sb-item" onclick="filterCategory('all')"><span class="sb-icon">◎</span>All Tools</div>
+      <div class="sb-item" onclick="filterCategory('recon')"><span class="sb-icon">◎</span>Recon & OSINT</div>
+      <div class="sb-item" onclick="filterCategory('scanning')"><span class="sb-icon">◎</span>Scanning</div>
+      <div class="sb-item" onclick="filterCategory('web')"><span class="sb-icon">◎</span>Web Attacks</div>
+      <div class="sb-item" onclick="filterCategory('exploitation')"><span class="sb-icon">◎</span>Exploitation</div>
+      <div class="sb-item" onclick="filterCategory('post')"><span class="sb-icon">◎</span>Post-Exploitation</div>
+      <div class="sb-item" onclick="filterCategory('password')"><span class="sb-icon">◎</span>Password Attacks</div>
+      <div class="sb-item" onclick="filterCategory('wireless')"><span class="sb-icon">◎</span>Wireless</div>
+      <div class="sb-item" onclick="filterCategory('windows')"><span class="sb-icon">◎</span>Windows</div>
+      <div class="sb-item" onclick="filterCategory('c2')"><span class="sb-icon">◎</span>C2 Frameworks</div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Quick Launch</div>
+      <div class="sb-item" onclick="quickLaunch('nc_listener',{lport:4444})"><span class="sb-icon">▶</span>NC Listener :4444</div>
+      <div class="sb-item" onclick="quickLaunch('nmap_basic',{target:prompt('Target IP:'),ports:'1-65535'})"><span class="sb-icon">▶</span>Full Nmap Scan</div>
+      <div class="sb-item" onclick="quickLaunch('linpeas',{})"><span class="sb-icon">▶</span>Run LinPEAS</div>
+      <div class="sb-item" onclick="quickLaunch('searchsploit',{query:prompt('Search term:')})"><span class="sb-icon">▶</span>SearchSploit</div>
+    </div>
+    <div class="scope-display" id="scope-display"><span style="color:var(--dim)">No scope set</span></div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="main">
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchMainTab('arsenal-tab',this)">Arsenal</div>
+      <div class="tab" onclick="switchMainTab('execute-tab',this)">Execute Tool</div>
+      <div class="tab" onclick="switchMainTab('audit-tab',this)">Audit Log</div>
+      <div class="tab" onclick="switchMainTab('reports-tab',this)">Reports</div>
+      <div class="tab" onclick="switchMainTab('mcp-config-tab',this)">MCP Config</div>
+    </div>
+
+    <!-- Arsenal -->
+    <div class="view active" id="arsenal-tab">
+      <div class="stats-row">
+        <div class="stat"><div class="stat-n" style="color:var(--accent)" id="stat-total">0</div><div class="stat-l">Total Tools</div></div>
+        <div class="stat"><div class="stat-n" style="color:var(--accent2)" id="stat-cats">0</div><div class="stat-l">Categories</div></div>
+        <div class="stat"><div class="stat-n" style="color:var(--accent4)" id="stat-scope">0</div><div class="stat-l">Scope Targets</div></div>
+        <div class="stat"><div class="stat-n" style="color:var(--accent3)" id="stat-sessions">0</div><div class="stat-l">Active Sessions</div></div>
+      </div>
+      <div class="search-row">
+        <div class="search-box"><span style="color:var(--dim);font-size:11px">⌕</span><input id="tool-search" placeholder="Search tools, tags, CVEs, techniques..." oninput="searchTools(this.value)"></div>
+        <select class="filter-sel" onchange="filterCategory(this.value)" id="cat-filter">
+          <option value="all">All Categories</option>
+          <option value="recon">Recon & OSINT</option>
+          <option value="scanning">Scanning</option>
+          <option value="web">Web Attacks</option>
+          <option value="exploitation">Exploitation</option>
+          <option value="post">Post-Exploitation</option>
+          <option value="password">Password</option>
+          <option value="wireless">Wireless</option>
+          <option value="windows">Windows</option>
+          <option value="c2">C2</option>
+        </select>
+      </div>
+      <div id="tool-container"></div>
+    </div>
+
+    <!-- Execute -->
+    <div class="view" id="execute-tab">
+      <div style="max-width:600px">
+        <div style="font-family:var(--font-sans);font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px">Execute Tool</div>
+        <div class="form-group"><label class="form-label">Tool Name</label>
+          <input class="form-inp" id="exec-tool-name" list="tool-list-datalist" placeholder="e.g. nmap_basic, gobuster_dir...">
+          <datalist id="tool-list-datalist"></datalist>
+        </div>
+        <div class="form-group"><label class="form-label">Arguments (JSON)</label>
+          <textarea class="form-inp" id="exec-args" rows="5" placeholder='{"target":"192.168.1.1","ports":"80,443,22"}'></textarea>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-primary" onclick="previewCommand()" style="flex:1">Preview Command</button>
+          <button class="btn-primary" onclick="executeToolDirect()" style="flex:1;background:rgba(255,77,109,.08);border-color:rgba(255,77,109,.25);color:var(--accent3)">Execute ▶</button>
+        </div>
+        <div class="result-box" id="exec-preview" style="display:none"></div>
+        <div style="margin-top:16px;font-family:var(--font-sans);font-size:12px;font-weight:700;color:var(--text)">Active Sessions</div>
+        <div id="session-list" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <!-- Audit -->
+    <div class="view" id="audit-tab">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-family:var(--font-sans);font-size:15px;font-weight:700;color:var(--accent)">Audit Log</span>
+        <button class="term-btn" onclick="loadAudit()" style="margin-left:auto">Refresh</button>
+        <button class="term-btn" onclick="exportAudit()">Export</button>
+      </div>
+      <table class="audit-table">
+        <thead><tr><th>Time</th><th>Tool</th><th>Action</th><th>Risk</th><th>Summary</th></tr></thead>
+        <tbody id="audit-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Reports -->
+    <div class="view" id="reports-tab">
+      <div style="font-family:var(--font-sans);font-size:15px;font-weight:700;color:var(--accent);margin-bottom:12px">Reports & Outputs</div>
+      <div id="reports-list"></div>
+    </div>
+
+    <!-- MCP Config -->
+    <div class="view" id="mcp-config-tab">
+      <div style="font-family:var(--font-sans);font-size:15px;font-weight:700;color:var(--accent);margin-bottom:14px">MCP Configuration</div>
+      <div style="margin-bottom:10px;font-size:11px;color:var(--muted)">Add to <span style="color:var(--accent2)">~/.config/claude/claude_desktop_config.json</span> or Claude Code settings:</div>
+      <div class="config-code" id="mcp-config-json">Loading...</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+        <div>
+          <label class="form-label">Transport</label>
+          <select class="form-sel" id="cfg-transport" onchange="loadMCPConfig()">
+            <option value="stdio">stdio (local Kali)</option>
+            <option value="sse">SSE (network)</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Server Host (SSE only)</label>
+          <input class="form-inp" id="cfg-host" value="localhost" oninput="loadMCPConfig()">
+        </div>
+      </div>
+      <button class="btn-primary" onclick="copyMCPConfig()" style="margin-top:10px;max-width:200px">Copy Config</button>
+    </div>
+  </div>
+
+  <!-- TERMINAL -->
+  <div class="terminal-pane">
+    <div class="term-head">
+      <span class="term-title-text">Terminal // Execution Engine</span>
+      <div class="term-actions">
+        <button class="term-btn" onclick="killAll()">Kill All</button>
+        <button class="term-btn" onclick="clearTerm()">Clear</button>
+      </div>
+    </div>
+    <div class="term-out" id="term-out"></div>
+    <div class="term-input-row">
+      <span class="term-prompt-tag">[agent]$</span>
+      <input class="term-inp" id="term-inp" placeholder="raw command or tool:args..." onkeydown="handleTermKey(event)">
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+    <div class="rp-tabs">
+      <div class="rp-tab active" onclick="switchRP('rp-ai',this)">AI Agent</div>
+      <div class="rp-tab" onclick="switchRP('rp-payload',this)">Payloads</div>
+      <div class="rp-tab" onclick="switchRP('rp-scope',this)">Scope</div>
+    </div>
+
+    <!-- AI Agent -->
+    <div class="rp-view active" id="rp-ai">
+      <div class="ai-msgs" id="ai-msgs">
+        <div style="text-align:center;padding:20px 0">
+          <div style="font-size:22px;margin-bottom:6px;color:var(--accent)">◈</div>
+          <div style="font-family:var(--font-sans);font-size:12px;font-weight:700;color:var(--accent)">MCP AI Agent</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Claude-powered — context-aware</div>
+        </div>
+        <div class="ai-bubble ai">
+          <div class="ai-tag">System</div>
+          Salam Ans. AI agent online.<br>Connected to: <span style="color:var(--accent2)">FastAPI backend</span> + <span style="color:var(--accent2)">WebSocket terminal</span>.<br><br>
+          Try: "suggest tools for AD enumeration" or "write gobuster wordlist command for login panel"
+        </div>
+      </div>
+      <div class="ai-inp-row">
+        <textarea class="ai-inp" id="ai-inp" rows="2" placeholder="Ask about tools, techniques, attack chains..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI()}"></textarea>
+        <button class="ai-send" id="ai-send-btn" onclick="sendAI()">Send ↗</button>
+      </div>
+    </div>
+
+    <!-- Payload Gen -->
+    <div class="rp-view" id="rp-payload">
+      <div class="form-section">
+        <div style="font-family:var(--font-sans);font-size:12px;font-weight:700;color:var(--accent);margin-bottom:10px">Payload Generator</div>
+        <div class="form-group"><label class="form-label">Type</label>
+          <select class="form-sel" id="pl-type">
+            <option value="exe">Windows EXE (x64)</option>
+            <option value="elf">Linux ELF (x64)</option>
+            <option value="php">PHP Meterpreter</option>
+            <option value="ps1">PowerShell</option>
+            <option value="aspx">ASPX</option>
+            <option value="apk">Android APK</option>
+            <option value="jar">Java JAR</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">LHOST</label><input class="form-inp" id="pl-lhost" placeholder="192.168.1.100"></div>
+        <div class="form-group"><label class="form-label">LPORT</label><input class="form-inp" id="pl-lport" value="4444" type="number"></div>
+        <div class="form-group"><label class="form-label">Encoder (optional)</label>
+          <select class="form-sel" id="pl-encoder">
+            <option value="">None</option>
+            <option value="x64/xor_dynamic">x64/xor_dynamic</option>
+            <option value="x86/shikata_ga_nai">x86/shikata_ga_nai</option>
+            <option value="x64/zutto_dekiru">x64/zutto_dekiru</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Iterations</label><input class="form-inp" id="pl-iter" value="1" type="number" min="1" max="20"></div>
+        <button class="btn-primary" id="gen-payload-btn" onclick="generatePayload()">Generate via msfvenom ▶</button>
+        <div class="result-box" id="payload-result" style="display:none"></div>
+        <div style="margin-top:12px;font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase">Saved Payloads</div>
+        <div id="payload-list" style="margin-top:6px"></div>
+      </div>
+    </div>
+
+    <!-- Scope Config -->
+    <div class="rp-view" id="rp-scope">
+      <div class="scope-section">
+        <div style="font-family:var(--font-sans);font-size:12px;font-weight:700;color:var(--accent);margin-bottom:10px">Engagement Scope</div>
+        <div class="form-group"><label class="form-label">Engagement Name</label><input class="form-inp" id="scope-name" value="default" placeholder="e.g. Descon_Timesheet_Pentest"></div>
+        <div class="form-group"><label class="form-label">In-Scope Targets (one per line)</label>
+          <textarea class="scope-input" id="scope-targets" rows="6" placeholder="192.168.1.0/24&#10;10.0.0.100&#10;target.example.com&#10;192.168.1.50"></textarea>
+        </div>
+        <button class="btn-primary" onclick="saveScope()">Save Scope ✓</button>
+        <div class="result-box" id="scope-result" style="display:none"></div>
+        <div style="margin-top:12px;font-size:9px;color:var(--muted);line-height:1.7">
+          ⚠ All tool executions are validated against scope.<br>
+          Scope violations are blocked and audit-logged.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── API Config ─────────────────────────────────────────────────────────────
+const API_BASE = window.location.origin;
+const WS_BASE  = API_BASE.replace('http','ws');
+let termWS = null;
+let aiWS   = null;
+let allTools = [];
+let termHistory = [];
+let histIdx = -1;
+let activePIDs = new Set();
+let aiTyping = false;
+
+// ── WebSocket Terminal ─────────────────────────────────────────────────────
+function connectTermWS() {
+  termWS = new WebSocket(`${WS_BASE}/ws/terminal`);
+  termWS.onopen = () => {
+    setWSStatus('connected', 'terminal connected');
+    termLine('info', '[+] Terminal WebSocket connected to FastAPI backend');
+  };
+  termWS.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    handleTermMsg(msg);
+  };
+  termWS.onerror = () => setWSStatus('error', 'ws error');
+  termWS.onclose = () => {
+    setWSStatus('error', 'disconnected');
+    termLine('warn', '[!] Terminal disconnected. Reconnecting in 3s...');
+    setTimeout(connectTermWS, 3000);
+  };
+}
+
+function handleTermMsg(msg) {
+  switch(msg.type) {
+    case 'connected':    termLine('info', `[*] ${msg.message}`); break;
+    case 'exec_start':   termLine('cmd', `[exec] ${msg.command}`); break;
+    case 'exec_pid':     activePIDs.add(msg.pid); updatePIDCount(); termLine('pid', `[pid:${msg.pid}]`); break;
+    case 'stdout':       termAppend('stdout', msg.data); break;
+    case 'stderr':       termAppend('stderr', msg.data); break;
+    case 'exec_end':
+      activePIDs.delete(msg.pid); updatePIDCount();
+      const rc = msg.returncode;
+      const cls = rc === 0 ? 'success' : 'stderr';
+      termLine(cls, `[exit:${rc}] pid:${msg.pid} done`);
+      break;
+    case 'scope_violation': termLine('scope', msg.data); break;
+    case 'error':        termLine('stderr', `[!] ${msg.data}`); break;
+    case 'killed':       termLine('warn', `[!] Killed PID ${msg.pid}`); break;
+    case 'pong':         break;
+  }
+}
+
+// ── WebSocket AI ───────────────────────────────────────────────────────────
+function connectAIWS() {
+  aiWS = new WebSocket(`${WS_BASE}/ws/ai`);
+  aiWS.onopen = () => { /* silent */ };
+  aiWS.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    handleAIMsg(msg);
+  };
+  aiWS.onerror = () => {};
+  aiWS.onclose = () => setTimeout(connectAIWS, 5000);
+}
+
+let currentAIBubble = null;
+let currentAIText = '';
+
+function handleAIMsg(msg) {
+  if (msg.type === 'ai_start') {
+    currentAIText = '';
+    currentAIBubble = addAIBubble('ai', '', true);
+    aiTyping = true;
+    document.getElementById('ai-send-btn').disabled = true;
+  } else if (msg.type === 'ai_token') {
+    currentAIText += msg.data;
+    if (currentAIBubble) {
+      currentAIBubble.querySelector('.ai-content').textContent = currentAIText;
+      currentAIBubble.scrollIntoView({behavior:'smooth',block:'end'});
+    }
+  } else if (msg.type === 'ai_done') {
+    aiTyping = false;
+    document.getElementById('ai-send-btn').disabled = false;
+    if (currentAIBubble) currentAIBubble.querySelector('.ai-thinking-ind')?.remove();
+  } else if (msg.type === 'error') {
+    addAIBubble('ai', `Error: ${msg.data}`);
+    document.getElementById('ai-send-btn').disabled = false;
+    aiTyping = false;
+  } else if (msg.type === 'history_cleared') {
+    document.getElementById('ai-msgs').innerHTML = '';
+    addAIBubble('ai', 'History cleared. Ready for new engagement context.');
+  }
+}
+
+function addAIBubble(role, text, streaming=false) {
+  const msgs = document.getElementById('ai-msgs');
+  const div = document.createElement('div');
+  div.className = `ai-bubble ${role}`;
+  div.innerHTML = `<div class="ai-tag">${role === 'user' ? 'YOU' : 'AGENT // CLAUDE'}</div>
+    <div class="ai-content">${text}</div>
+    ${streaming ? '<div class="ai-thinking-ind" style="color:var(--dim);font-size:10px;margin-top:4px">▊</div>' : ''}`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+function sendAI() {
+  if (aiTyping) return;
+  const inp = document.getElementById('ai-inp');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = '';
+  addAIBubble('user', msg);
+  if (aiWS && aiWS.readyState === WebSocket.OPEN) {
+    aiWS.send(JSON.stringify({type:'chat', message:msg}));
+  } else {
+    // Fallback to REST
+    sendAIREST(msg);
+  }
+}
+
+async function sendAIREST(msg) {
+  document.getElementById('ai-send-btn').disabled = true;
+  const thinking = addAIBubble('ai', '...', true);
+  try {
+    const r = await fetch(`${API_BASE}/api/ai/chat`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message:msg})
+    });
+    const data = await r.json();
+    thinking.remove();
+    if (data.reply) addAIBubble('ai', data.reply);
+    else addAIBubble('ai', data.error || 'Error connecting to Claude API');
+  } catch(e) {
+    thinking.remove();
+    addAIBubble('ai', `Error: ${e.message}. Is ANTHROPIC_API_KEY set?`);
+  }
+  document.getElementById('ai-send-btn').disabled = false;
+}
+
+// ── Tool Loading ───────────────────────────────────────────────────────────
+async function loadTools() {
+  try {
+    const r = await fetch(`${API_BASE}/api/tools`);
+    const data = await r.json();
+    allTools = data.tools;
+    document.getElementById('stat-total').textContent = data.total;
+    document.getElementById('tool-count-badge').textContent = data.total;
+    // populate datalist
+    const dl = document.getElementById('tool-list-datalist');
+    allTools.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.name;
+      dl.appendChild(opt);
+    });
+    const cats = await fetch(`${API_BASE}/api/tools/categories`).then(r=>r.json());
+    document.getElementById('stat-cats').textContent = Object.keys(cats).length;
+    renderTools(allTools);
+  } catch(e) {
+    termLine('stderr', `[!] Failed to load tools from API: ${e.message}`);
+  }
+}
+
+const CAT_COLORS = {
+  recon:'#a78bfa', scanning:'#00ff88', web:'#00cfff', exploitation:'#ff4d6d',
+  post:'#ffb800', password:'#f472b6', wireless:'#34d399', windows:'#60a5fa',
+  c2:'#f87171', forensics:'#94a3b8'
+};
+const CAT_LABELS = {
+  recon:'Recon & OSINT', scanning:'Scanning & Enumeration', web:'Web Application Attacks',
+  exploitation:'Exploitation', post:'Post-Exploitation & Pivoting', password:'Password Attacks',
+  wireless:'Wireless Attacks', windows:'Windows-Specific', c2:'C2 Frameworks', forensics:'Forensics'
+};
+const ICONS = {recon:'◎',scanning:'◎',web:'◈',exploitation:'▶',post:'⬡',password:'⌘',wireless:'◌',windows:'⊞',c2:'◆',forensics:'◇'};
+
+function renderTools(tools) {
+  const container = document.getElementById('tool-container');
+  container.innerHTML = '';
+  const grouped = {};
+  tools.forEach(t => { (grouped[t.category] = grouped[t.category]||[]).push(t); });
+  Object.entries(grouped).forEach(([cat, catTools]) => {
+    const hdr = document.createElement('div');
+    hdr.className = 'cat-header';
+    hdr.textContent = `${CAT_LABELS[cat]||cat}  (${catTools.length})`;
+    container.appendChild(hdr);
+    const grid = document.createElement('div');
+    grid.className = 'tool-grid';
+    catTools.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'tool-card';
+      card.style.setProperty('--clr', CAT_COLORS[t.category]||'#334');
+      const platCls = t.platform === 'kali' ? 'p-kali' : t.platform === 'windows' ? 'p-win' : 'p-both';
+      const platTxt = t.platform === 'kali' ? 'Kali' : t.platform === 'windows' ? 'Windows' : 'Cross-Platform';
+      card.innerHTML = `
+        <div class="tc-top">
+          <span class="tc-icon">${ICONS[t.category]||'◎'}</span>
+          <div><div class="tc-name">${t.name}</div><div class="tc-cat">${t.category}</div></div>
+        </div>
+        <div class="tc-desc">${t.description}</div>
+        <div class="tc-foot">
+          <span class="plat ${platCls}">${platTxt}</span>
+          <span class="risk r-${t.risk_level}">${t.risk_level}</span>
+          <button class="exec-btn" onclick="openExec('${t.name}','${escArgs(t)}')">exec →</button>
+        </div>`;
+      grid.appendChild(card);
+    });
+    container.appendChild(grid);
+  });
+}
+
+function escArgs(t) {
+  const args = {};
+  t.args_required.forEach(k => args[k] = '');
+  Object.entries(t.args_optional).forEach(([k,v]) => args[k] = v);
+  return JSON.stringify(args).replace(/'/g,"\\'");
+}
+
+function searchTools(q) {
+  const filtered = q ? allTools.filter(t =>
+    t.name.toLowerCase().includes(q.toLowerCase()) ||
+    t.description.toLowerCase().includes(q.toLowerCase()) ||
+    t.tags.some(tag => tag.toLowerCase().includes(q.toLowerCase()))
+  ) : allTools;
+  renderTools(filtered);
+}
+
+function filterCategory(cat) {
+  document.getElementById('cat-filter').value = cat;
+  const filtered = cat === 'all' ? allTools : allTools.filter(t => t.category === cat);
+  renderTools(filtered);
+  termLine('info', `[*] Filter: ${cat} — ${filtered.length} tools`);
+}
+
+// ── Tool Execution ─────────────────────────────────────────────────────────
+function openExec(toolName, argsJson) {
+  switchMainTab('execute-tab', null);
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active', i===1);
+  });
+  document.getElementById('exec-tool-name').value = toolName;
+  try { document.getElementById('exec-args').value = JSON.stringify(JSON.parse(argsJson), null, 2); }
+  catch { document.getElementById('exec-args').value = argsJson; }
+}
+
+async function previewCommand() {
+  const tool = document.getElementById('exec-tool-name').value.trim();
+  const argsRaw = document.getElementById('exec-args').value.trim();
+  let args = {};
+  try { args = JSON.parse(argsRaw||'{}'); } catch { alert('Invalid JSON args'); return; }
+  try {
+    const r = await fetch(`${API_BASE}/api/tools/build-command`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({tool_name:tool, args})
+    });
+    const data = await r.json();
+    const box = document.getElementById('exec-preview');
+    box.style.display = 'block';
+    box.textContent = `Risk: ${data.risk_level?.toUpperCase()}\nPlatform: ${data.platform}\n\nCommand:\n${data.command}`;
+    box.style.color = data.risk_level === 'critical' ? 'var(--accent3)' : data.risk_level === 'high' ? 'var(--accent4)' : 'var(--accent2)';
+  } catch(e) { alert(`Error: ${e.message}`); }
+}
+
+function executeToolDirect() {
+  const tool = document.getElementById('exec-tool-name').value.trim();
+  const argsRaw = document.getElementById('exec-args').value.trim();
+  let args = {};
+  try { args = JSON.parse(argsRaw||'{}'); } catch { alert('Invalid JSON args'); return; }
+  if (!termWS || termWS.readyState !== WebSocket.OPEN) { alert('Terminal WebSocket not connected'); return; }
+  termWS.send(JSON.stringify({type:'execute_tool', tool_name:tool, args}));
+  termLine('cmd', `[mcp] Executing: ${tool}`);
+}
+
+function quickLaunch(toolName, args) {
+  if (!args || Object.values(args).some(v => v === null || v === undefined || v === '')) {
+    termLine('warn', `[!] Cancelled: missing required arg for ${toolName}`);
+    return;
+  }
+  if (!termWS || termWS.readyState !== WebSocket.OPEN) { alert('Terminal not connected'); return; }
+  termWS.send(JSON.stringify({type:'execute_tool', tool_name:toolName, args}));
+  termLine('cmd', `[quick] Launching ${toolName}`);
+}
+
+// ── Terminal ───────────────────────────────────────────────────────────────
+function termLine(cls, text) {
+  const out = document.getElementById('term-out');
+  const div = document.createElement('div');
+  div.className = `t-${cls}`;
+  div.textContent = text;
+  out.appendChild(div);
+  out.scrollTop = out.scrollHeight;
+}
+
+function termAppend(cls, data) {
+  const out = document.getElementById('term-out');
+  // Reuse last element if same class for efficiency
+  const last = out.lastElementChild;
+  if (last && last.className === `t-${cls}` && !data.includes('\n')) {
+    last.textContent += data;
+  } else {
+    const div = document.createElement('div');
+    div.className = `t-${cls}`;
+    div.textContent = data;
+    out.appendChild(div);
+  }
+  out.scrollTop = out.scrollHeight;
+}
+
+function clearTerm() {
+  document.getElementById('term-out').innerHTML = '';
+  termLine('info', '[*] Terminal cleared');
+}
+
+function killAll() {
+  if (termWS && termWS.readyState === WebSocket.OPEN) {
+    activePIDs.forEach(pid => {
+      termWS.send(JSON.stringify({type:'kill', pid}));
+    });
+  }
+}
+
+function handleTermKey(e) {
+  const inp = document.getElementById('term-inp');
+  if (e.key === 'Enter') {
+    const cmd = inp.value.trim();
+    if (!cmd) return;
+    termHistory.unshift(cmd); histIdx = -1;
+    termLine('prompt', `[agent]$ ${cmd}`);
+    processTermCmd(cmd);
+    inp.value = '';
+  } else if (e.key === 'ArrowUp') {
+    histIdx = Math.min(histIdx+1, termHistory.length-1);
+    inp.value = termHistory[histIdx]||''; e.preventDefault();
+  } else if (e.key === 'ArrowDown') {
+    histIdx = Math.max(histIdx-1, -1);
+    inp.value = histIdx<0?'':termHistory[histIdx]; e.preventDefault();
+  }
+}
+
+function processTermCmd(cmd) {
+  const c = cmd.trim();
+  if (c === 'help') {
+    termLine('info', 'Commands: help | list | scope | sessions | clear | kill <pid> | ai <msg> | <raw shell command>');
+    return;
+  }
+  if (c === 'list') { termLine('info', `[*] ${allTools.length} tools loaded. Use UI to filter/exec.`); return; }
+  if (c === 'scope') { termLine('info', `[*] Scope: ${document.getElementById('scope-targets').value.trim().split('\n').join(', ')}`); return; }
+  if (c === 'sessions') { termLine('info', `[*] Active PIDs: ${[...activePIDs].join(', ')||'none'}`); return; }
+  if (c === 'clear') { clearTerm(); return; }
+  if (c.startsWith('kill ')) {
+    const pid = c.slice(5).trim();
+    if (termWS) termWS.send(JSON.stringify({type:'kill', pid}));
+    return;
+  }
+  if (c.startsWith('ai ')) {
+    const msg = c.slice(3);
+    document.getElementById('ai-inp').value = msg;
+    sendAI();
+    return;
+  }
+  // Raw command
+  if (termWS && termWS.readyState === WebSocket.OPEN) {
+    termWS.send(JSON.stringify({type:'execute_raw', command:cmd}));
+  } else {
+    termLine('stderr', '[!] WebSocket not connected. Start the API server.');
+  }
+}
+
+// ── Payload Generator ──────────────────────────────────────────────────────
+async function generatePayload() {
+  const btn = document.getElementById('gen-payload-btn');
+  const lhost = document.getElementById('pl-lhost').value.trim();
+  const lport = parseInt(document.getElementById('pl-lport').value);
+  if (!lhost) { alert('Enter LHOST'); return; }
+  btn.textContent = 'Generating...'; btn.disabled = true;
+  const box = document.getElementById('payload-result');
+  box.style.display = 'block'; box.textContent = 'Running msfvenom...';
+  try {
+    const r = await fetch(`${API_BASE}/api/payload/generate`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        payload_type: document.getElementById('pl-type').value,
+        lhost, lport,
+        encoder: document.getElementById('pl-encoder').value || null,
+        iterations: parseInt(document.getElementById('pl-iter').value),
+      })
+    });
+    const data = await r.json();
+    box.textContent = data.status === 'ok'
+      ? `✓ Generated: ${data.output_file}\nPayload: ${data.payload}\nFormat: ${data.format}\n\n${data.stdout}`
+      : `Error: ${data.stderr||'Unknown error'}`;
+    box.style.color = data.status === 'ok' ? 'var(--accent)' : 'var(--accent3)';
+    loadPayloads();
+  } catch(e) {
+    box.textContent = `Error: ${e.message}`;
+    box.style.color = 'var(--accent3)';
+  }
+  btn.textContent = 'Generate via msfvenom ▶'; btn.disabled = false;
+}
+
+async function loadPayloads() {
+  try {
+    const r = await fetch(`${API_BASE}/api/payloads`);
+    const files = await r.json();
+    const list = document.getElementById('payload-list');
+    list.innerHTML = files.slice(0,10).map(f =>
+      `<div style="font-size:10px;color:var(--muted);padding:3px 0;border-bottom:1px solid var(--border)">${f.name} <span style="color:var(--dim)">(${(f.size/1024).toFixed(1)}KB)</span></div>`
+    ).join('');
+  } catch {}
+}
+
+// ── Scope ──────────────────────────────────────────────────────────────────
+async function saveScope() {
+  const name = document.getElementById('scope-name').value.trim() || 'default';
+  const targets = document.getElementById('scope-targets').value.trim()
+    .split('\n').map(s=>s.trim()).filter(Boolean);
+  try {
+    const r = await fetch(`${API_BASE}/api/scope`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({targets, engagement_name:name})
+    });
+    const data = await r.json();
+    document.getElementById('scope-result').style.display = 'block';
+    document.getElementById('scope-result').textContent = `✓ Scope saved\nEngagement: ${data.engagement}\nTargets: ${data.targets.join(', ')}`;
+    document.getElementById('stat-scope').textContent = data.targets.length;
+    document.getElementById('engagement-tag').textContent = `engagement: ${data.engagement}`;
+    document.getElementById('scope-display').innerHTML = `<span style="color:var(--dim);font-size:9px">SCOPE: </span>${data.targets.map(t=>`<span class="scope-target">${t}</span>`).join(' ')}`;
+    termLine('success', `[+] Scope updated: ${data.targets.length} targets for ${data.engagement}`);
+  } catch(e) {
+    alert(`Error: ${e.message}`);
+  }
+}
+
+// ── Audit Log ──────────────────────────────────────────────────────────────
+async function loadAudit() {
+  try {
+    const r = await fetch(`${API_BASE}/api/audit?limit=100`);
+    const data = await r.json();
+    const tbody = document.getElementById('audit-tbody');
+    tbody.innerHTML = data.entries.reverse().map(e => {
+      const riskColor = {low:'#4ade80',medium:'var(--accent4)',high:'#f87171',critical:'var(--accent3)'}[e.risk_level]||'var(--muted)';
+      return `<tr>
+        <td style="color:var(--muted);white-space:nowrap">${e.timestamp.slice(11,19)}</td>
+        <td style="color:var(--accent2)">${e.tool}</td>
+        <td>${e.action}</td>
+        <td><span style="color:${riskColor}">${e.risk_level}</span></td>
+        <td style="color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.result_summary}</td>
+      </tr>`;
+    }).join('');
+  } catch {}
+}
+
+function exportAudit() {
+  fetch(`${API_BASE}/api/audit?limit=1000`).then(r=>r.json()).then(data=>{
+    const blob = new Blob([JSON.stringify(data.entries,null,2)],{type:'application/json'});
+    const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=`audit_${new Date().toISOString().slice(0,10)}.json`; a.click();
+  });
+}
+
+// ── Reports ─────────────────────────────────────────────────────────────────
+async function loadReports() {
+  try {
+    const r = await fetch(`${API_BASE}/api/reports`);
+    const files = await r.json();
+    document.getElementById('reports-list').innerHTML = files.length
+      ? files.map(f=>
+        `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:11px;color:var(--accent2)">${f.name}</span>
+          <span style="font-size:10px;color:var(--muted)">${(f.size/1024).toFixed(1)}KB</span>
+          <span style="font-size:9px;color:var(--dim)">${f.modified.slice(0,19)}</span>
+          <a href="${API_BASE}/api/reports/${f.name}" target="_blank" style="margin-left:auto;font-size:9px;color:var(--accent);text-decoration:none;border:1px solid rgba(0,255,136,.2);padding:2px 7px;border-radius:3px">View</a>
+        </div>`
+      ).join('')
+      : '<div style="color:var(--muted);font-size:11px;padding:10px 0">No reports yet. Execute tools to generate output files.</div>';
+  } catch {}
+}
+
+// ── MCP Config ──────────────────────────────────────────────────────────────
+async function loadMCPConfig() {
+  const transport = document.getElementById('cfg-transport')?.value || 'stdio';
+  const host = document.getElementById('cfg-host')?.value || 'localhost';
+  try {
+    const r = await fetch(`${API_BASE}/api/mcp/config`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({transport, server_host:host, server_port:8080})
+    });
+    const data = await r.json();
+    document.getElementById('mcp-config-json').textContent = data.json;
+  } catch {}
+}
+
+function copyMCPConfig() {
+  const text = document.getElementById('mcp-config-json').textContent;
+  navigator.clipboard.writeText(text).then(()=>termLine('success','[+] MCP config copied to clipboard'));
+}
+
+// ── Sessions ────────────────────────────────────────────────────────────────
+async function loadSessions() {
+  const list = document.getElementById('session-list');
+  if (!list) return;
+  if (activePIDs.size === 0) {
+    list.innerHTML = '<div style="font-size:10px;color:var(--muted)">No active sessions</div>';
+    return;
+  }
+  list.innerHTML = [...activePIDs].map(pid =>
+    `<div class="session-item">
+      <span class="session-pid">PID ${pid}</span>
+      <span style="font-size:10px;color:var(--muted)">running</span>
+      <button class="kill-btn" onclick="killPID('${pid}')">Kill ✕</button>
+    </div>`
+  ).join('');
+}
+
+function killPID(pid) {
+  if (termWS) termWS.send(JSON.stringify({type:'kill', pid}));
+}
+
+// ── UI Helpers ──────────────────────────────────────────────────────────────
+function setWSStatus(state, msg) {
+  const led = document.getElementById('ws-led');
+  const txt = document.getElementById('ws-status');
+  led.style.background = state === 'connected' ? 'var(--accent)' : state === 'error' ? 'var(--accent3)' : 'var(--accent4)';
+  txt.textContent = msg;
+}
+
+function updatePIDCount() {
+  document.getElementById('active-pids').textContent = `${activePIDs.size} sessions`;
+  document.getElementById('stat-sessions').textContent = activePIDs.size;
+  loadSessions();
+}
+
+function switchMainTab(tabId, el) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  if (el) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
+  if (tabId === 'audit-tab') loadAudit();
+  if (tabId === 'reports-tab') loadReports();
+  if (tabId === 'mcp-config-tab') loadMCPConfig();
+  if (tabId === 'execute-tab') loadSessions();
+}
+
+function switchView(view, el) {
+  document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+function switchRP(id, el) {
+  document.querySelectorAll('.rp-view').forEach(v => { v.classList.remove('active'); v.style.display='none'; });
+  document.querySelectorAll('.rp-tab').forEach(t => t.classList.remove('active'));
+  const v = document.getElementById(id);
+  if (v) { v.classList.add('active'); v.style.display='flex'; }
+  if (el) el.classList.add('active');
+  if (id === 'rp-payload') loadPayloads();
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  connectTermWS();
+  connectAIWS();
+  await loadTools();
+  loadMCPConfig();
+
+  // Init RP views
+  document.querySelectorAll('.rp-view').forEach((v,i) => { v.style.display = i===0?'flex':'none'; });
+
+  // Ping WS keep-alive
+  setInterval(() => { if(termWS?.readyState===WebSocket.OPEN) termWS.send(JSON.stringify({type:'ping'})); }, 30000);
+
+  termLine('info', `[*] Offensive MCP Agent ready — ${allTools.length} tools loaded`);
+  termLine('info', `[*] API: ${API_BASE} | WS terminal: ${WS_BASE}/ws/terminal`);
+  termLine('info', `[*] Set ANTHROPIC_API_KEY env var for AI agent`);
+  termLine('prompt', '[agent]$ _');
+});
+</script>
+</body>
+</html>
